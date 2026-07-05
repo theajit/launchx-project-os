@@ -1,0 +1,1 @@
+LaunchX Project OS uses Vite. The app entry is /src/main.tsx and the browser root is #root.
