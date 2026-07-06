@@ -9,6 +9,8 @@ LaunchX Project OS should be treated as stable for internal use after these item
 3. PWA shell support and offline queue foundation.
 4. Mobile dashboard and Settings UI polish.
 5. Project-scoped execution views for tasks, notes, ADRs, and weekly priorities.
+6. Friendly dashboard shortcut cards instead of oversized metric blocks.
+7. Team/member list layout that does not overlap names and emails.
 
 ## Current stability work completed
 
@@ -31,6 +33,14 @@ LaunchX Project OS should be treated as stable for internal use after these item
 - Service worker added at `frontend/public/sw.js`.
 - Service worker registered in production from `frontend/src/main.tsx`.
 - Offline queue utility added at `frontend/src/offlineQueue.ts`.
+
+### Final UX gate
+
+- Dashboard statistics and lists are scoped to the selected project.
+- Notes, tasks, ADRs, and weekly views show selected-project data first.
+- Home dashboard cards are compact shortcut cards.
+- Assigned/open tasks are shown on the dashboard for the selected project.
+- Team member rows use a dedicated `member-card` layout to prevent email/name overlap.
 
 ## Freeze guidance
 
