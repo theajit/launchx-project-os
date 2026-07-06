@@ -89,6 +89,13 @@ VITE_API_BASE_URL=https://api.launchx.in
 - Weekly priorities: create/delete/toggle completion.
 - Activity: audit feed from `/activity`.
 
+### Dashboard UX policy
+- Dashboard should show execution value before controls.
+- Theme switch is top-right, not a separate large dashboard tile.
+- Metric cards are navigation shortcuts to Projects, Tasks, ADRs, and Weekly.
+- Dashboard includes Assigned/Open Tasks so a logged-in CXO immediately sees what needs action.
+- Hero panel should stay compact on mobile to reduce white space.
+
 ## API routes
 
 Auth:
@@ -183,6 +190,13 @@ Audit:
 
 ### UI Polish v2
 - Improved mobile spacing, safe-area handling, Settings layout, badge width, button stacking, topbar overflow, and bottom nav horizontal behavior.
+
+### Dashboard UX v2
+- Reduced dashboard whitespace.
+- Moved theme switch to top-right.
+- Made dashboard metric cards clickable navigation shortcuts.
+- Added assigned/open tasks block to dashboard.
+- Kept hero panel compact on mobile.
 
 ## Next recommended milestones
 
