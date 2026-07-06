@@ -12,12 +12,7 @@ type Role = 'CEO' | 'CTO' | 'CTPO' | 'CGO';
 type AuthUser = { userId: string; organizationId: string; role: Role; email: string };
 type ProjectRow = { id: string; name: string; description: string; status: 'Idea' | 'Active' | 'Paused' | 'Completed'; priority: 'Low' | 'Medium' | 'High' };
 
-declare module '@fastify/jwt' {
-  interface FastifyJWT {
-    payload: AuthUser;
-    user: AuthUser;
-  }
-}
+declare module '@fastify/jwt' { interface FastifyJWT { payload: AuthUser; user: AuthUser; } }
 
 const app = Fastify({ logger: true });
 const port = Number(process.env.PORT ?? 8080);
@@ -25,26 +20,15 @@ const jwtSecret = process.env.JWT_SECRET ?? 'dev-only-change-me';
 const allowedOrigin = process.env.CORS_ORIGIN ?? '*';
 
 await ensureSchema();
-
 await app.register(cors, { origin: allowedOrigin === '*' ? true : allowedOrigin, credentials: true });
 await app.register(sensible);
 await app.register(jwt, { secret: jwtSecret });
 
-async function requireAuth(request: any) {
-  await request.jwtVerify();
-  return request.user as AuthUser;
-}
-
-async function logActivity(user: AuthUser, entityType: string, entityId: string | null, action: string, metadata = {}) {
-  await query('insert into activity_logs (organization_id, user_id, entity_type, entity_id, action, metadata) values ($1,$2,$3,$4,$5,$6)', [user.organizationId, user.userId, entityType, entityId, action, metadata]);
-}
+async function requireAuth(request: any) { await request.jwtVerify(); return request.user as AuthUser; }
+async function logActivity(user: AuthUser, entityType: string, entityId: string | null, action: string, metadata = {}) { await query('insert into activity_logs (organization_id, user_id, entity_type, entity_id, action, metadata) values ($1,$2,$3,$4,$5,$6)', [user.organizationId, user.userId, entityType, entityId, action, metadata]); }
 
 app.get('/health', async () => ({ ok: true, service: 'launchx-project-os-api' }));
-
-app.get('/db/health', async () => {
-  const rows = await query<{ ok: number }>('select 1 as ok');
-  return { ok: rows[0]?.ok === 1 };
-});
+app.get('/db/health', async () => { const rows = await query<{ ok: number }>('select 1 as ok'); return { ok: rows[0]?.ok === 1 }; });
 
 app.post('/auth/bootstrap', async (request, reply) => {
   const body = z.object({ organizationName: z.string().min(2), name: z.string().min(2), email: z.string().email(), password: z.string().min(8), role: z.enum(['CEO','CTO','CTPO','CGO']).default('CEO') }).parse(request.body);
@@ -88,6 +72,31 @@ app.get('/workspace', async (request) => {
   return { projects, notes, tasks, decisions, weekly, members };
 });
 
+app.post('/workspace/import', async (request) => {
+  const user = await requireAuth(request);
+  const item = z.object({ id: z.string().optional(), projectId: z.string().optional(), name: z.string().optional(), title: z.string().optional(), description: z.string().optional(), content: z.string().optional(), status: z.string().optional(), priority: z.string().optional(), owner: z.string().optional(), decision: z.string().optional(), consequences: z.string().optional(), done: z.boolean().optional() });
+  const body = z.object({ projects: z.array(item).default([]), notes: z.array(item).default([]), tasks: z.array(item).default([]), decisions: z.array(item).default([]), weekly: z.array(item).default([]), replace: z.boolean().default(false) }).parse(request.body);
+  if (body.replace) {
+    await query('delete from weekly_priorities where organization_id=$1', [user.organizationId]);
+    await query('delete from decisions where organization_id=$1', [user.organizationId]);
+    await query('delete from tasks where organization_id=$1', [user.organizationId]);
+    await query('delete from notes where organization_id=$1', [user.organizationId]);
+    await query('delete from projects where organization_id=$1', [user.organizationId]);
+  }
+  const projectMap = new Map<string, string>();
+  for (const p of body.projects) {
+    const rows = await query<{ id: string }>('insert into projects (organization_id, name, description, status, priority, owner_user_id) values ($1,$2,$3,$4,$5,$6) returning id', [user.organizationId, p.name ?? p.title ?? 'Untitled project', p.description ?? '', ['Idea','Active','Paused','Completed'].includes(p.status ?? '') ? p.status : 'Idea', ['Low','Medium','High'].includes(p.priority ?? '') ? p.priority : 'Medium', user.userId]);
+    if (p.id) projectMap.set(p.id, rows[0].id);
+  }
+  const firstProject = [...projectMap.values()][0] ?? null;
+  for (const n of body.notes) await query('insert into notes (organization_id, project_id, title, content, created_by) values ($1,$2,$3,$4,$5)', [user.organizationId, (n.projectId && projectMap.get(n.projectId)) || firstProject, n.title ?? 'Untitled note', n.content ?? '', user.userId]);
+  for (const t of body.tasks) await query('insert into tasks (organization_id, project_id, title, description, status, priority, created_by) values ($1,$2,$3,$4,$5,$6,$7)', [user.organizationId, (t.projectId && projectMap.get(t.projectId)) || firstProject, t.title ?? 'Untitled task', t.description ?? '', ['Todo','In Progress','Done'].includes(t.status ?? '') ? t.status : 'Todo', ['Low','Medium','High'].includes(t.priority ?? '') ? t.priority : 'Medium', user.userId]);
+  for (const d of body.decisions) await query('insert into decisions (organization_id, project_id, title, decision, consequences, created_by) values ($1,$2,$3,$4,$5,$6)', [user.organizationId, (d.projectId && projectMap.get(d.projectId)) || firstProject, d.title ?? 'ADR: Untitled', d.decision ?? '', d.consequences ?? '', user.userId]);
+  for (const w of body.weekly) await query('insert into weekly_priorities (organization_id, project_id, title, done, created_by) values ($1,$2,$3,$4,$5)', [user.organizationId, (w.projectId && projectMap.get(w.projectId)) || firstProject, w.title ?? 'Untitled priority', w.done ?? false, user.userId]);
+  await logActivity(user, 'workspace', null, 'imported', { projects: body.projects.length, notes: body.notes.length, tasks: body.tasks.length, decisions: body.decisions.length, weekly: body.weekly.length, replace: body.replace });
+  return { ok: true, imported: { projects: body.projects.length, notes: body.notes.length, tasks: body.tasks.length, decisions: body.decisions.length, weekly: body.weekly.length } };
+});
+
 app.post('/projects', async (request) => {
   const user = await requireAuth(request);
   const body = z.object({ name: z.string().min(1), description: z.string().default(''), status: z.enum(['Idea','Active','Paused','Completed']).default('Idea'), priority: z.enum(['Low','Medium','High']).default('Medium') }).parse(request.body);
@@ -108,17 +117,7 @@ app.patch('/projects/:id', async (request, reply) => {
   return rows[0];
 });
 
-app.delete('/projects/:id', async (request) => {
-  const user = await requireAuth(request);
-  const params = z.object({ id: z.string().uuid() }).parse(request.params);
-  await query('delete from projects where id=$1 and organization_id=$2', [params.id, user.organizationId]);
-  await logActivity(user, 'project', params.id, 'deleted');
-  return { ok: true };
-});
-
-app.get('/activity', async (request) => {
-  const user = await requireAuth(request);
-  return query('select al.*, u.name, u.email from activity_logs al left join users u on u.id=al.user_id where al.organization_id=$1 order by al.created_at desc limit 100', [user.organizationId]);
-});
+app.delete('/projects/:id', async (request) => { const user = await requireAuth(request); const params = z.object({ id: z.string().uuid() }).parse(request.params); await query('delete from projects where id=$1 and organization_id=$2', [params.id, user.organizationId]); await logActivity(user, 'project', params.id, 'deleted'); return { ok: true }; });
+app.get('/activity', async (request) => { const user = await requireAuth(request); return query('select al.*, u.name, u.email from activity_logs al left join users u on u.id=al.user_id where al.organization_id=$1 order by al.created_at desc limit 100', [user.organizationId]); });
 
 app.listen({ port, host: '0.0.0.0' });
