@@ -10,6 +10,7 @@ import { ensureSchema } from './migrate.js';
 
 type Role = 'CEO' | 'CTO' | 'CTPO' | 'CGO';
 type AuthUser = { userId: string; organizationId: string; role: Role; email: string };
+type ProjectRow = { id: string; name: string; description: string; status: 'Idea' | 'Active' | 'Paused' | 'Completed'; priority: 'Low' | 'Medium' | 'High' };
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -99,10 +100,10 @@ app.patch('/projects/:id', async (request, reply) => {
   const user = await requireAuth(request);
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
   const body = z.object({ name: z.string().min(1).optional(), description: z.string().optional(), status: z.enum(['Idea','Active','Paused','Completed']).optional(), priority: z.enum(['Low','Medium','High']).optional() }).parse(request.body);
-  const current = await query('select * from projects where id=$1 and organization_id=$2', [params.id, user.organizationId]);
-  if (!current.length) return reply.notFound('Project not found');
-  const next = { ...current[0], ...body } as any;
-  const rows = await query('update projects set name=$1, description=$2, status=$3, priority=$4, updated_at=now() where id=$5 and organization_id=$6 returning *', [next.name, next.description, next.status, next.priority, params.id, user.organizationId]);
+  const current = await query<ProjectRow>('select id, name, description, status, priority from projects where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+  const existing = current[0];
+  if (!existing) return reply.notFound('Project not found');
+  const rows = await query('update projects set name=$1, description=$2, status=$3, priority=$4, updated_at=now() where id=$5 and organization_id=$6 returning *', [body.name ?? existing.name, body.description ?? existing.description, body.status ?? existing.status, body.priority ?? existing.priority, params.id, user.organizationId]);
   await logActivity(user, 'project', params.id, 'updated', body);
   return rows[0];
 });
