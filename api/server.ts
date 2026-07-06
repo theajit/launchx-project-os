@@ -25,7 +25,7 @@ await app.register(jwt, { secret: jwtSecret });
 async function requireAuth(request: any) { await request.jwtVerify(); return request.user as AuthUser; }
 function requireCEO(user: AuthUser, reply: any, message = 'Only CEO can perform this action') { if (user.role !== 'CEO') { reply.forbidden(message); return false; } return true; }
 async function logActivity(user: AuthUser, entityType: string, entityId: string | null, action: string, metadata = {}) { await query('insert into activity_logs (organization_id, user_id, entity_type, entity_id, action, metadata) values ($1,$2,$3,$4,$5,$6)', [user.organizationId, user.userId, entityType, entityId, action, metadata]); }
-app.get('/', async () => ({ ok: true, service: 'launchx-project-os-api', endpoints: ['/health','/db/health','/auth/login','/workspace','/team/members','/activity'] }));
+app.get('/', async () => ({ ok: true, service: 'launchx-project-os-api', endpoints: ['/health','/db/health','/auth/login','/workspace','/team/members','/stakeholders','/activity'] }));
 app.get('/health', async () => ({ ok: true, service: 'launchx-project-os-api' }));
 app.get('/db/health', async () => { const rows = await query<{ ok: number }>('select 1 as ok'); return { ok: rows[0]?.ok === 1 }; });
 app.post('/auth/bootstrap', async (request, reply) => {
@@ -74,21 +74,22 @@ app.patch('/team/members/:id', async (request, reply) => { const user = await re
 app.delete('/team/members/:id', async (request, reply) => { const user = await requireAuth(request); if (!requireCEO(user, reply)) return; const params = z.object({ id: z.string().uuid() }).parse(request.params); await query('delete from organization_members where organization_id=$1 and user_id=$2 and role <> \'CEO\'', [user.organizationId, params.id]); await logActivity(user, 'member', params.id, 'removed'); return { ok: true }; });
 app.get('/workspace', async (request) => {
   const user = await requireAuth(request);
-  const [projects, notes, tasks, decisions, weekly, members] = await Promise.all([
+  const [projects, notes, tasks, decisions, weekly, members, stakeholders] = await Promise.all([
     query('select * from projects where organization_id=$1 order by updated_at desc', [user.organizationId]),
     query('select * from notes where organization_id=$1 order by updated_at desc', [user.organizationId]),
     query('select * from tasks where organization_id=$1 order by updated_at desc', [user.organizationId]),
     query('select * from decisions where organization_id=$1 order by updated_at desc', [user.organizationId]),
     query('select * from weekly_priorities where organization_id=$1 order by created_at desc', [user.organizationId]),
     query('select u.id, u.email, u.name, om.role from users u join organization_members om on om.user_id=u.id where om.organization_id=$1', [user.organizationId]),
+    query('select * from external_stakeholders where organization_id=$1 order by created_at desc', [user.organizationId]),
   ]);
-  return { projects, notes, tasks, decisions, weekly, members };
+  return { projects, notes, tasks, decisions, weekly, members, stakeholders };
 });
 app.post('/workspace/import', async (request, reply) => {
   const user = await requireAuth(request); if (!requireCEO(user, reply, 'Only CEO can replace server workspace data')) return;
   const item = z.object({ id: z.string().optional(), projectId: z.string().optional(), name: z.string().optional(), title: z.string().optional(), description: z.string().optional(), content: z.string().optional(), status: z.string().optional(), priority: z.string().optional(), owner: z.string().optional(), decision: z.string().optional(), consequences: z.string().optional(), done: z.boolean().optional() });
   const body = z.object({ projects: z.array(item).default([]), notes: z.array(item).default([]), tasks: z.array(item).default([]), decisions: z.array(item).default([]), weekly: z.array(item).default([]), replace: z.boolean().default(false) }).parse(request.body);
-  if (body.replace) { await query('delete from weekly_priorities where organization_id=$1', [user.organizationId]); await query('delete from decisions where organization_id=$1', [user.organizationId]); await query('delete from tasks where organization_id=$1', [user.organizationId]); await query('delete from notes where organization_id=$1', [user.organizationId]); await query('delete from projects where organization_id=$1', [user.organizationId]); }
+  if (body.replace) { await query('delete from weekly_priorities where organization_id=$1', [user.organizationId]); await query('delete from decisions where organization_id=$1', [user.organizationId]); await query('delete from tasks where organization_id=$1', [user.organizationId]); await query('delete from notes where organization_id=$1', [user.organizationId]); await query('delete from external_stakeholders where organization_id=$1', [user.organizationId]); await query('delete from projects where organization_id=$1', [user.organizationId]); }
   const projectMap = new Map<string, string>();
   for (const p of body.projects) { const rows = await query<{ id: string }>('insert into projects (organization_id, name, description, status, priority, owner_user_id) values ($1,$2,$3,$4,$5,$6) returning id', [user.organizationId, p.name ?? p.title ?? 'Untitled project', p.description ?? '', ['Idea','Active','Paused','Completed'].includes(p.status ?? '') ? p.status : 'Idea', ['Low','Medium','High'].includes(p.priority ?? '') ? p.priority : 'Medium', user.userId]); if (p.id) projectMap.set(p.id, rows[0].id); }
   const firstProject = [...projectMap.values()][0] ?? null;
