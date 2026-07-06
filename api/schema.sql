@@ -1,15 +1,30 @@
 create extension if not exists pgcrypto;
 
+do $$ begin
+  create type member_role as enum ('CEO','CTO','CTPO','CGO');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type project_status as enum ('Idea','Active','Paused','Completed');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type priority_level as enum ('Low','Medium','High');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type task_status as enum ('Todo','In Progress','Done');
+exception when duplicate_object then null;
+end $$;
+
 create table if not exists organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   created_at timestamptz not null default now()
 );
-
-create type member_role as enum ('CEO','CTO','CTPO','CGO');
-create type project_status as enum ('Idea','Active','Paused','Completed');
-create type priority_level as enum ('Low','Medium','High');
-create type task_status as enum ('Todo','In Progress','Done');
 
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
