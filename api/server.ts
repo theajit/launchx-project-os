@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { query } from './db.js';
 import { ensureSchema } from './migrate.js';
+import { registerCrudRoutes } from './crud.js';
 
 type Role = 'CEO' | 'CTO' | 'CTPO' | 'CGO';
 type AuthUser = { userId: string; organizationId: string; role: Role; email: string };
@@ -137,4 +138,5 @@ app.patch('/projects/:id', async (request, reply) => { const user = await requir
 app.delete('/projects/:id', async (request) => { const user = await requireAuth(request); const params = z.object({ id: z.string().uuid() }).parse(request.params); await query('delete from projects where id=$1 and organization_id=$2', [params.id, user.organizationId]); await logActivity(user, 'project', params.id, 'deleted'); return { ok: true }; });
 app.get('/activity', async (request) => { const user = await requireAuth(request); return query('select al.*, u.name, u.email from activity_logs al left join users u on u.id=al.user_id where al.organization_id=$1 order by al.created_at desc limit 100', [user.organizationId]); });
 
+await registerCrudRoutes(app);
 app.listen({ port, host: '0.0.0.0' });
