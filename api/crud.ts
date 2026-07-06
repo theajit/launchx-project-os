@@ -61,6 +61,28 @@ export async function registerCrudRoutes(app: FastifyInstance) {
     return rows[0];
   });
 
+  app.post('/tasks/:id/assign', async (request, reply) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({ assignedTo: z.string().uuid().nullable().optional() }).parse(request.body);
+    const current = await query<any>('select id from tasks where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    if (!current[0]) return reply.notFound('Task not found');
+    const rows = await query('update tasks set assigned_to=$1, updated_at=now() where id=$2 and organization_id=$3 returning *', [body.assignedTo ?? null, params.id, user.organizationId]);
+    await logActivity(user, 'task', params.id, 'assigned', { assignedTo: body.assignedTo ?? null });
+    return rows[0];
+  });
+
+  app.post('/tasks/:id/status', async (request, reply) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({ status: z.enum(['Todo','In Progress','Done']) }).parse(request.body);
+    const current = await query<any>('select id from tasks where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    if (!current[0]) return reply.notFound('Task not found');
+    const rows = await query('update tasks set status=$1, updated_at=now() where id=$2 and organization_id=$3 returning *', [body.status, params.id, user.organizationId]);
+    await logActivity(user, 'task', params.id, 'status_updated', { status: body.status });
+    return rows[0];
+  });
+
   app.delete('/tasks/:id', async (request) => {
     const user = await requireAuth(request);
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
