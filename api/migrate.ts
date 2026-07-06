@@ -1,6 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pool } from './db.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export async function ensureSchema() {
   const autoMigrate = process.env.AUTO_MIGRATE ?? 'true';
@@ -9,7 +12,7 @@ export async function ensureSchema() {
     return;
   }
 
-  const schemaPath = join(process.cwd(), 'api', 'schema.sql');
+  const schemaPath = join(__dirname, '..', 'schema.sql');
   const schema = await readFile(schemaPath, 'utf8');
   await pool.query(schema);
   console.log('Database schema is ready.');
