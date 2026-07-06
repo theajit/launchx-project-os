@@ -11,6 +11,7 @@ LaunchX Project OS should be treated as stable for internal use after these item
 5. Project-scoped execution views for tasks, notes, ADRs, and weekly priorities.
 6. Friendly dashboard shortcut cards instead of oversized metric blocks.
 7. Team/member list layout that does not overlap names and emails.
+8. External stakeholder assignment data model for clients, vendors, freelancers, partners, and consultants.
 
 ## Current stability work completed
 
@@ -20,6 +21,7 @@ LaunchX Project OS should be treated as stable for internal use after these item
 - Applied migrations are tracked in `schema_migrations`.
 - Initial migration lives at `api/migrations/0001_initial.sql`.
 - Legacy `schema.sql` remains as fallback only.
+- `api/migrations/0002_external_stakeholders.sql` adds external stakeholder records and external assignment support.
 
 ### Checks
 
@@ -42,6 +44,13 @@ LaunchX Project OS should be treated as stable for internal use after these item
 - Assigned/open tasks are shown on the dashboard for the selected project.
 - Team member rows use a dedicated `member-card` layout to prevent email/name overlap.
 
+### External stakeholder foundation
+
+- External stakeholders are project-scoped records.
+- Stakeholders can represent clients, vendors, freelancers, partners, consultants, agencies, legal, finance, or any outside delivery owner.
+- Tasks can now point to either an internal user or an external stakeholder at the database/API layer.
+- External stakeholders are assignment targets, not login users in v1.
+
 ## Freeze guidance
 
 After this pass, avoid adding major LaunchX Project OS features until the Triphulu map milestone is complete. Accept only bug fixes, data-safety fixes, and small UI cleanup.
@@ -53,3 +62,4 @@ After this pass, avoid adding major LaunchX Project OS features until the Triphu
 - Wire offline queue into all write actions.
 - Add CI workflow for API build, frontend build, and route smoke checks.
 - Add proper PWA icons and install prompt polish.
+- Add a polished frontend People tab for external stakeholders.
