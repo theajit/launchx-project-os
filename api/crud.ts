@@ -1,0 +1,114 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { query } from './db.js';
+
+type Role = 'CEO' | 'CTO' | 'CTPO' | 'CGO';
+type AuthUser = { userId: string; organizationId: string; role: Role; email: string };
+
+async function requireAuth(request: any) {
+  await request.jwtVerify();
+  return request.user as AuthUser;
+}
+
+async function logActivity(user: AuthUser, entityType: string, entityId: string | null, action: string, metadata = {}) {
+  await query('insert into activity_logs (organization_id, user_id, entity_type, entity_id, action, metadata) values ($1,$2,$3,$4,$5,$6)', [user.organizationId, user.userId, entityType, entityId, action, metadata]);
+}
+
+export async function registerCrudRoutes(app: FastifyInstance) {
+  app.post('/notes', async (request) => {
+    const user = await requireAuth(request);
+    const body = z.object({ projectId: z.string().uuid().nullable().optional(), title: z.string().min(1), content: z.string().default('') }).parse(request.body);
+    const rows = await query<{ id: string }>('insert into notes (organization_id, project_id, title, content, created_by) values ($1,$2,$3,$4,$5) returning *', [user.organizationId, body.projectId ?? null, body.title, body.content, user.userId]);
+    await logActivity(user, 'note', rows[0].id, 'created', { title: body.title });
+    return rows[0];
+  });
+
+  app.patch('/notes/:id', async (request, reply) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({ title: z.string().min(1).optional(), content: z.string().optional(), projectId: z.string().uuid().nullable().optional() }).parse(request.body);
+    const current = await query<any>('select * from notes where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    if (!current[0]) return reply.notFound('Note not found');
+    const rows = await query('update notes set title=$1, content=$2, project_id=$3, updated_at=now() where id=$4 and organization_id=$5 returning *', [body.title ?? current[0].title, body.content ?? current[0].content, body.projectId ?? current[0].project_id, params.id, user.organizationId]);
+    await logActivity(user, 'note', params.id, 'updated', body);
+    return rows[0];
+  });
+
+  app.delete('/notes/:id', async (request) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    await query('delete from notes where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    await logActivity(user, 'note', params.id, 'deleted');
+    return { ok: true };
+  });
+
+  app.post('/tasks', async (request) => {
+    const user = await requireAuth(request);
+    const body = z.object({ projectId: z.string().uuid().nullable().optional(), title: z.string().min(1), description: z.string().default(''), status: z.enum(['Todo','In Progress','Done']).default('Todo'), priority: z.enum(['Low','Medium','High']).default('Medium'), assignedTo: z.string().uuid().nullable().optional(), dueDate: z.string().nullable().optional() }).parse(request.body);
+    const rows = await query<{ id: string }>('insert into tasks (organization_id, project_id, title, description, status, priority, assigned_to, due_date, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *', [user.organizationId, body.projectId ?? null, body.title, body.description, body.status, body.priority, body.assignedTo ?? null, body.dueDate ?? null, user.userId]);
+    await logActivity(user, 'task', rows[0].id, 'created', { title: body.title });
+    return rows[0];
+  });
+
+  app.patch('/tasks/:id', async (request, reply) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({ projectId: z.string().uuid().nullable().optional(), title: z.string().min(1).optional(), description: z.string().optional(), status: z.enum(['Todo','In Progress','Done']).optional(), priority: z.enum(['Low','Medium','High']).optional(), assignedTo: z.string().uuid().nullable().optional(), dueDate: z.string().nullable().optional() }).parse(request.body);
+    const current = await query<any>('select * from tasks where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    if (!current[0]) return reply.notFound('Task not found');
+    const rows = await query('update tasks set project_id=$1, title=$2, description=$3, status=$4, priority=$5, assigned_to=$6, due_date=$7, updated_at=now() where id=$8 and organization_id=$9 returning *', [body.projectId ?? current[0].project_id, body.title ?? current[0].title, body.description ?? current[0].description, body.status ?? current[0].status, body.priority ?? current[0].priority, body.assignedTo ?? current[0].assigned_to, body.dueDate ?? current[0].due_date, params.id, user.organizationId]);
+    await logActivity(user, 'task', params.id, 'updated', body);
+    return rows[0];
+  });
+
+  app.delete('/tasks/:id', async (request) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    await query('delete from tasks where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    await logActivity(user, 'task', params.id, 'deleted');
+    return { ok: true };
+  });
+
+  app.post('/decisions', async (request) => {
+    const user = await requireAuth(request);
+    const body = z.object({ projectId: z.string().uuid().nullable().optional(), title: z.string().min(1), context: z.string().default(''), decision: z.string().default(''), consequences: z.string().default('') }).parse(request.body);
+    const rows = await query<{ id: string }>('insert into decisions (organization_id, project_id, title, context, decision, consequences, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning *', [user.organizationId, body.projectId ?? null, body.title, body.context, body.decision, body.consequences, user.userId]);
+    await logActivity(user, 'decision', rows[0].id, 'created', { title: body.title });
+    return rows[0];
+  });
+
+  app.delete('/decisions/:id', async (request) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    await query('delete from decisions where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    await logActivity(user, 'decision', params.id, 'deleted');
+    return { ok: true };
+  });
+
+  app.post('/weekly-priorities', async (request) => {
+    const user = await requireAuth(request);
+    const body = z.object({ projectId: z.string().uuid().nullable().optional(), title: z.string().min(1), done: z.boolean().default(false) }).parse(request.body);
+    const rows = await query<{ id: string }>('insert into weekly_priorities (organization_id, project_id, title, done, created_by) values ($1,$2,$3,$4,$5) returning *', [user.organizationId, body.projectId ?? null, body.title, body.done, user.userId]);
+    await logActivity(user, 'weekly_priority', rows[0].id, 'created', { title: body.title });
+    return rows[0];
+  });
+
+  app.patch('/weekly-priorities/:id', async (request, reply) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({ title: z.string().min(1).optional(), done: z.boolean().optional(), projectId: z.string().uuid().nullable().optional() }).parse(request.body);
+    const current = await query<any>('select * from weekly_priorities where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    if (!current[0]) return reply.notFound('Weekly priority not found');
+    const rows = await query('update weekly_priorities set title=$1, done=$2, project_id=$3, updated_at=now() where id=$4 and organization_id=$5 returning *', [body.title ?? current[0].title, body.done ?? current[0].done, body.projectId ?? current[0].project_id, params.id, user.organizationId]);
+    await logActivity(user, 'weekly_priority', params.id, 'updated', body);
+    return rows[0];
+  });
+
+  app.delete('/weekly-priorities/:id', async (request) => {
+    const user = await requireAuth(request);
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    await query('delete from weekly_priorities where id=$1 and organization_id=$2', [params.id, user.organizationId]);
+    await logActivity(user, 'weekly_priority', params.id, 'deleted');
+    return { ok: true };
+  });
+}
