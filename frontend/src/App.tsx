@@ -13,21 +13,11 @@ type Weekly = { id: string; projectId: string; title: string; done: boolean };
 type Store = { projects: Project[]; notes: Note[]; tasks: Task[]; decisions: Decision[]; weekly: Weekly[] };
 
 const KEY = 'launchx-project-os:frontend-v2';
+const TOKEN_KEY = 'launchx-project-os:api-token';
+const API_KEY = 'launchx-project-os:api-base';
 const uid = () => crypto.randomUUID();
-const seed: Store = {
-  projects: [
-    { id: 'p1', name: 'LaunchX Project OS', description: 'Premium command center for CEO, CTO, CTPO and CGO execution.', status: 'Active', priority: 'High', owner: 'CEO' },
-    { id: 'p2', name: 'KitchenOS POS', description: 'Restaurant SaaS operating layer for POS and kitchen workflows.', status: 'Idea', priority: 'Medium', owner: 'CTO' }
-  ],
-  notes: [{ id: 'n1', projectId: 'p1', title: 'Product thesis', content: '## Local-first to synced OS\nShip fast, then add role-based sync.\n\n- Projects\n- Markdown notes\n- Task board\n- ADR log\n- Weekly priorities' }],
-  tasks: [
-    { id: 't1', projectId: 'p1', title: 'Restore premium UI', description: 'Move from fallback page to full cockpit.', status: 'In Progress', priority: 'High' },
-    { id: 't2', projectId: 'p1', title: 'Connect API sync', description: 'Login and shared workspace via VPS Postgres API.', status: 'Todo', priority: 'High' }
-  ],
-  decisions: [{ id: 'd1', projectId: 'p1', title: 'ADR-001: VPS Postgres', decision: 'Use VPS Postgres + Fastify API.', consequences: 'More control, less vendor lock-in, better bootstrap economics.' }],
-  weekly: [{ id: 'w1', projectId: 'p1', title: 'Get infra green and restore UI', done: false }]
-};
-
+const defaultApi = import.meta.env.VITE_API_BASE_URL || 'https://api.launchx.in';
+const seed: Store = { projects: [{ id: 'p1', name: 'LaunchX Project OS', description: 'Premium command center for CEO, CTO, CTPO and CGO execution.', status: 'Active', priority: 'High', owner: 'CEO' }, { id: 'p2', name: 'KitchenOS POS', description: 'Restaurant SaaS operating layer for POS and kitchen workflows.', status: 'Idea', priority: 'Medium', owner: 'CTO' }], notes: [{ id: 'n1', projectId: 'p1', title: 'Product thesis', content: '## Local-first to synced OS\nShip fast, then add role-based sync.\n\n- Projects\n- Markdown notes\n- Task board\n- ADR log\n- Weekly priorities' }], tasks: [{ id: 't1', projectId: 'p1', title: 'Restore premium UI', description: 'Move from fallback page to full cockpit.', status: 'In Progress', priority: 'High' }, { id: 't2', projectId: 'p1', title: 'Connect API sync', description: 'Login and shared workspace via VPS Postgres API.', status: 'Todo', priority: 'High' }], decisions: [{ id: 'd1', projectId: 'p1', title: 'ADR-001: VPS Postgres', decision: 'Use VPS Postgres + Fastify API.', consequences: 'More control, less vendor lock-in, better bootstrap economics.' }], weekly: [{ id: 'w1', projectId: 'p1', title: 'Get infra green and restore UI', done: false }] };
 function load(): Store { try { return JSON.parse(localStorage.getItem(KEY) || '') as Store; } catch { return seed; } }
 function badge(value: string) { return 'badge ' + value.toLowerCase().replaceAll(' ', '-'); }
 function projectName(data: Store, id: string) { return data.projects.find((p) => p.id === id)?.name || 'No project'; }
@@ -41,29 +31,17 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [commandOpen, setCommandOpen] = useState(false);
   const [edit, setEdit] = useState<{ type: 'project' | 'note' | 'task' | 'weekly'; id: string } | null>(null);
+  const [apiBase, setApiBase] = useState(() => localStorage.getItem(API_KEY) || defaultApi);
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || '');
+  const [email, setEmail] = useState('ajit@theajit.in');
+  const [password, setPassword] = useState('');
+  const [syncStatus, setSyncStatus] = useState('Not connected');
 
   useEffect(() => localStorage.setItem(KEY, JSON.stringify(data)), [data]);
   useEffect(() => { document.documentElement.classList.toggle('dark', dark); localStorage.setItem('theme', dark ? 'dark' : 'light'); }, [dark]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandOpen(true); }
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
-      if (event.key === 'Escape') { setCommandOpen(false); setEdit(null); }
-      if (event.key.toLowerCase() === 'p') addProject();
-      if (event.key.toLowerCase() === 'n') addNote();
-      if (event.key.toLowerCase() === 't') addTask('Todo');
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  });
+  useEffect(() => { const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandOpen(true); } if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return; if (event.key === 'Escape') { setCommandOpen(false); setEdit(null); } if (event.key.toLowerCase() === 'p') addProject(); if (event.key.toLowerCase() === 'n') addNote(); if (event.key.toLowerCase() === 't') addTask('Todo'); }; addEventListener('keydown', onKey); return () => removeEventListener('keydown', onKey); });
 
-  const stats = useMemo(() => [
-    { label: 'Projects', value: data.projects.length, detail: `${data.projects.filter(p => p.status === 'Active').length} active`, icon: <FolderKanban /> },
-    { label: 'Open tasks', value: data.tasks.filter(t => t.status !== 'Done').length, detail: `${data.tasks.filter(t => t.priority === 'High').length} high priority`, icon: <ClipboardList /> },
-    { label: 'ADRs', value: data.decisions.length, detail: 'decision log', icon: <Archive /> },
-    { label: 'Weekly', value: `${data.weekly.filter(w => w.done).length}/${data.weekly.length}`, detail: 'focus closed', icon: <Target /> }
-  ], [data]);
-
+  const stats = useMemo(() => [{ label: 'Projects', value: data.projects.length, detail: `${data.projects.filter(p => p.status === 'Active').length} active`, icon: <FolderKanban /> }, { label: 'Open tasks', value: data.tasks.filter(t => t.status !== 'Done').length, detail: `${data.tasks.filter(t => t.priority === 'High').length} high priority`, icon: <ClipboardList /> }, { label: 'ADRs', value: data.decisions.length, detail: 'decision log', icon: <Archive /> }, { label: 'Weekly', value: `${data.weekly.filter(w => w.done).length}/${data.weekly.length}`, detail: 'focus closed', icon: <Target /> }], [data]);
   function save(next: Partial<Store>) { setData((current) => ({ ...current, ...next })); }
   function addProject() { const item: Project = { id: uid(), name: 'New project', description: 'Define the execution thesis.', status: 'Idea', priority: 'Medium', owner: 'CEO' }; save({ projects: [item, ...data.projects] }); setProjectId(item.id); setView('Projects'); setEdit({ type: 'project', id: item.id }); }
   function addNote() { const item: Note = { id: uid(), projectId, title: 'Untitled note', content: '## New note\nWrite in markdown.' }; save({ notes: [item, ...data.notes] }); setView('Notes'); setEdit({ type: 'note', id: item.id }); }
@@ -72,26 +50,24 @@ export default function App() {
   function addWeekly() { const item: Weekly = { id: uid(), projectId, title: 'New weekly priority', done: false }; save({ weekly: [item, ...data.weekly] }); setView('Weekly'); setEdit({ type: 'weekly', id: item.id }); }
   function exportJson() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); a.download = 'launchx-project-os.json'; a.click(); }
   function importJson(file?: File) { if (!file) return; const reader = new FileReader(); reader.onload = () => setData(JSON.parse(String(reader.result))); reader.readAsText(file); }
+  async function api(path: string, body?: unknown, auth = true) { const res = await fetch(`${apiBase.replace(/\/$/, '')}${path}`, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...(auth && token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined }); const json = await res.json(); if (!res.ok) throw new Error(json.message || json.error || 'API request failed'); return json; }
+  async function login() { setSyncStatus('Logging in...'); const json = await api('/auth/login', { email, password }, false); setToken(json.token); localStorage.setItem(TOKEN_KEY, json.token); localStorage.setItem(API_KEY, apiBase); setSyncStatus(`Connected as ${json.user.email} (${json.user.role})`); }
+  async function bootstrap() { setSyncStatus('Creating CEO workspace...'); const json = await api('/auth/bootstrap', { organizationName: 'LaunchX', name: 'Ajit Satpathy', email, password, role: 'CEO' }, false); setToken(json.token); localStorage.setItem(TOKEN_KEY, json.token); localStorage.setItem(API_KEY, apiBase); setSyncStatus(`Workspace created: ${json.organization.name}`); }
+  async function pushLocalData() { setSyncStatus('Pushing local data to PostgreSQL...'); const json = await api('/workspace/import', { ...data, replace: true }); setSyncStatus(`Pushed: ${json.imported.projects} projects, ${json.imported.notes} notes, ${json.imported.tasks} tasks, ${json.imported.decisions} ADRs, ${json.imported.weekly} weekly`); }
 
   const actions = [['New project', addProject], ['New note', addNote], ['New task', () => addTask('Todo')], ['New ADR', addDecision], ['New weekly priority', addWeekly], ['Export JSON', exportJson]] as const;
   const addForView = () => view === 'Notes' ? addNote() : view === 'Tasks' ? addTask('Todo') : view === 'Decisions' ? addDecision() : view === 'Weekly' ? addWeekly() : addProject();
 
-  return <div className="app-shell">
-    <aside className="sidebar"><div className="brand"><div className="brand-mark">LX</div><div><b>LaunchX</b><span>Project OS</span></div></div><Nav view={view} setView={setView} /><button className="command-hint" onClick={() => setCommandOpen(true)}><Command size={15} /> Ctrl K</button></aside>
-    <main><header className="topbar"><div><p className="eyebrow">Founder execution cockpit</p><h1>{view}</h1><p className="subhead">{projectName(data, projectId)}</p></div><div className="top-actions"><select value={projectId} onChange={e => setProjectId(e.target.value)}>{data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="ghost" onClick={() => setCommandOpen(true)}><Search size={16} /> Command</button><button className="square" onClick={() => setDark(!dark)}>{dark ? <Sun /> : <Moon />}</button><button className="primary" onClick={addForView}><Plus /> Add</button></div></header>
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark">LX</div><div><b>LaunchX</b><span>Project OS</span></div></div><Nav view={view} setView={setView} /><button className="command-hint" onClick={() => setCommandOpen(true)}><Command size={15} /> Ctrl K</button></aside><main><header className="topbar"><div><p className="eyebrow">Founder execution cockpit</p><h1>{view}</h1><p className="subhead">{projectName(data, projectId)}</p></div><div className="top-actions"><select value={projectId} onChange={e => setProjectId(e.target.value)}>{data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="ghost" onClick={() => setCommandOpen(true)}><Search size={16} /> Command</button><button className="square" onClick={() => setDark(!dark)}>{dark ? <Sun /> : <Moon />}</button><button className="primary" onClick={addForView}><Plus /> Add</button></div></header>
       {view === 'Dashboard' && <section className="dashboard"><div className="hero card"><span className="pill"><Sparkles size={14} /> Premium Project OS</span><h2>Make every LaunchX idea accountable.</h2><p>Projects, markdown notes, task board, ADRs, weekly execution and JSON backup in one cockpit.</p></div>{stats.map(s => <div className="stat card" key={s.label}>{s.icon}<span>{s.label}</span><strong>{s.value}</strong><small>{s.detail}</small></div>)}<Panel title="This week">{data.weekly.map(w => <Row key={w.id} title={w.title} meta={projectName(data, w.projectId)} done={w.done} onToggle={() => save({ weekly: data.weekly.map(x => x.id === w.id ? { ...x, done: !x.done } : x) })} onOpen={() => setEdit({ type: 'weekly', id: w.id })} />)}</Panel><Panel title="Decision log">{data.decisions.map(d => <button className="list-card" key={d.id}><b>{d.title}</b><span>{d.decision}</span></button>)}</Panel></section>}
       {view === 'Projects' && <section className="cards">{data.projects.map(p => <article className="entity-card" key={p.id} onClick={() => setEdit({ type: 'project', id: p.id })}><div><h3>{p.name}</h3><p>{p.description}</p></div><div className="meta-row"><span className={badge(p.status)}>{p.status}</span><span className={badge(p.priority)}>{p.priority}</span><small>{p.owner}</small></div></article>)}</section>}
       {view === 'Notes' && <section><div className="searchbar"><label><Search size={16} /><input placeholder="Search notes" value={query} onChange={e => setQuery(e.target.value)} /></label><button className="primary" onClick={addNote}><Plus /> Note</button></div><div className="cards">{data.notes.filter(n => (n.title + n.content).toLowerCase().includes(query.toLowerCase())).map(n => <article className="entity-card note-card" key={n.id} onClick={() => setEdit({ type: 'note', id: n.id })}><h3>{n.title}</h3><div className="markdown compact" dangerouslySetInnerHTML={{ __html: markdown(n.content) }} /><div className="meta-row"><small>{projectName(data, n.projectId)}</small></div></article>)}</div></section>}
       {view === 'Tasks' && <section className="board">{(['Todo','In Progress','Done'] as TaskStatus[]).map(status => <div className="column" key={status}><div className="column-head"><h3>{status}</h3><button onClick={() => addTask(status)}><Plus size={15} /></button></div>{data.tasks.filter(t => t.status === status).map(t => <article className="task-card" key={t.id} onClick={() => setEdit({ type: 'task', id: t.id })}><b>{t.title}</b><p>{t.description}</p><span className={badge(t.priority)}>{t.priority}</span></article>)}</div>)}</section>}
       {view === 'Decisions' && <section className="timeline">{data.decisions.map(d => <article className="decision-card" key={d.id}><h3>{d.title}</h3><p><b>Decision:</b> {d.decision}</p><p><b>Impact:</b> {d.consequences}</p></article>)}</section>}
       {view === 'Weekly' && <section className="weekly">{data.weekly.map(w => <Row key={w.id} title={w.title} meta={projectName(data, w.projectId)} done={w.done} onToggle={() => save({ weekly: data.weekly.map(x => x.id === w.id ? { ...x, done: !x.done } : x) })} onOpen={() => setEdit({ type: 'weekly', id: w.id })} />)}</section>}
-      {view === 'Settings' && <section className="settings"><h2>Local-first data layer</h2><p>Frontend is ready. API and Postgres are green. Next sprint wires shared sync.</p><div className="settings-grid"><button onClick={exportJson}><Download /> Export JSON</button><label className="button-like"><Upload /> Import JSON<input type="file" hidden accept="application/json" onChange={e => importJson(e.target.files?.[0])} /></label><button onClick={() => setData(seed)}>Reset sample data</button></div><div className="shortcut-card"><b>Shortcuts</b><span>Ctrl/Cmd K · P project · N note · T task · Esc close</span></div></section>}
-    </main><nav className="bottom-nav"><Nav view={view} setView={setView} compact /><button onClick={() => setCommandOpen(true)}>•••<span>More</span></button></nav>
-    {edit && <Editor edit={edit} data={data} save={save} close={() => setEdit(null)} />}
-    {commandOpen && <div className="overlay" onClick={() => setCommandOpen(false)}><div className="palette" onClick={e => e.stopPropagation()}><div className="palette-head"><Command /><input autoFocus placeholder="Type a command" /></div>{actions.map(([label, run]) => <button key={label} onClick={() => { run(); setCommandOpen(false); }}>{label}</button>)}</div></div>}
-  </div>;
+      {view === 'Settings' && <section className="settings"><h2>Server sync</h2><p>Push this browser workspace into VPS PostgreSQL. After this, we can switch CRUD to live DB sync.</p><div className="editor-card"><input value={apiBase} onChange={e => setApiBase(e.target.value)} placeholder="API URL" /><input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" /><div className="settings-grid"><button onClick={bootstrap}>Create CEO workspace</button><button onClick={login}>Login</button><button onClick={pushLocalData}>Push local data to DB</button></div><p>{syncStatus}</p></div><hr/><div className="settings-grid"><button onClick={exportJson}><Download /> Export JSON</button><label className="button-like"><Upload /> Import JSON<input type="file" hidden accept="application/json" onChange={e => importJson(e.target.files?.[0])} /></label><button onClick={() => setData(seed)}>Reset sample data</button></div><div className="shortcut-card"><b>Shortcuts</b><span>Ctrl/Cmd K · P project · N note · T task · Esc close</span></div></section>}
+    </main><nav className="bottom-nav"><Nav view={view} setView={setView} compact /><button onClick={() => setCommandOpen(true)}>•••<span>More</span></button></nav>{edit && <Editor edit={edit} data={data} save={save} close={() => setEdit(null)} />}{commandOpen && <div className="overlay" onClick={() => setCommandOpen(false)}><div className="palette" onClick={e => e.stopPropagation()}><div className="palette-head"><Command /><input autoFocus placeholder="Type a command" /></div>{actions.map(([label, run]) => <button key={label} onClick={() => { run(); setCommandOpen(false); }}>{label}</button>)}</div></div>}</div>;
 }
-
 function Nav({ view, setView, compact }: { view: View; setView: (v: View) => void; compact?: boolean }) { const items = [['Dashboard', <Sparkles />], ['Projects', <FolderKanban />], ['Notes', <FileText />], ['Tasks', <ClipboardList />], ['Decisions', <Archive />], ['Weekly', <Target />], ['Settings', <Settings />]] as const; return <>{items.slice(0, compact ? 5 : 7).map(([v, icon]) => <button key={v} className={view === v ? 'active' : ''} onClick={() => setView(v as View)}>{icon}<span>{v}</span></button>)}</>; }
 function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <section className="card panel"><div className="panel-head"><h3>{title}</h3></div>{children}</section>; }
 function Row({ title, meta, done, onToggle, onOpen }: { title: string; meta: string; done: boolean; onToggle: () => void; onOpen: () => void }) { return <div className="row"><button className="check" onClick={onToggle}>{done ? <Check /> : <Circle />}</button><button className="row-main" onClick={onOpen}><b>{title}</b><span>{meta}</span></button></div>; }
