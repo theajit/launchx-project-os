@@ -6,6 +6,7 @@ import sensible from '@fastify/sensible';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { query } from './db.js';
+import { ensureSchema } from './migrate.js';
 
 type Role = 'CEO' | 'CTO' | 'CTPO' | 'CGO';
 type AuthUser = { userId: string; organizationId: string; role: Role; email: string };
@@ -22,6 +23,8 @@ const port = Number(process.env.PORT ?? 8080);
 const jwtSecret = process.env.JWT_SECRET ?? 'dev-only-change-me';
 const allowedOrigin = process.env.CORS_ORIGIN ?? '*';
 
+await ensureSchema();
+
 await app.register(cors, { origin: allowedOrigin === '*' ? true : allowedOrigin, credentials: true });
 await app.register(sensible);
 await app.register(jwt, { secret: jwtSecret });
@@ -32,10 +35,7 @@ async function requireAuth(request: any) {
 }
 
 async function logActivity(user: AuthUser, entityType: string, entityId: string | null, action: string, metadata = {}) {
-  await query(
-    'insert into activity_logs (organization_id, user_id, entity_type, entity_id, action, metadata) values ($1,$2,$3,$4,$5,$6)',
-    [user.organizationId, user.userId, entityType, entityId, action, metadata]
-  );
+  await query('insert into activity_logs (organization_id, user_id, entity_type, entity_id, action, metadata) values ($1,$2,$3,$4,$5,$6)', [user.organizationId, user.userId, entityType, entityId, action, metadata]);
 }
 
 app.get('/health', async () => ({ ok: true, service: 'launchx-project-os-api' }));
@@ -59,10 +59,7 @@ app.post('/auth/bootstrap', async (request, reply) => {
 
 app.post('/auth/login', async (request, reply) => {
   const body = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(request.body);
-  const rows = await query<{ id: string; email: string; name: string; password_hash: string; organization_id: string; role: Role }>(
-    'select u.id, u.email, u.name, u.password_hash, om.organization_id, om.role from users u join organization_members om on om.user_id=u.id where u.email=$1 limit 1',
-    [body.email]
-  );
+  const rows = await query<{ id: string; email: string; name: string; password_hash: string; organization_id: string; role: Role }>('select u.id, u.email, u.name, u.password_hash, om.organization_id, om.role from users u join organization_members om on om.user_id=u.id where u.email=$1 limit 1', [body.email]);
   const user = rows[0];
   if (!user) return reply.unauthorized('Invalid credentials');
   const valid = await bcrypt.compare(body.password, user.password_hash);
