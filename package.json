@@ -1,1 +1,23 @@
-{"name":"launchx-project-os","version":"0.1.0","private":true,"type":"module","engines":{"node":"22.x"},"scripts":{"dev":"vite --host 0.0.0.0","build":"tsc -b && vite build","start":"serve -s dist -l tcp://0.0.0.0:$PORT","preview":"vite preview --host 0.0.0.0","api:dev":"tsx api/server.ts","api:build":"tsc -p api/tsconfig.json","api:start":"node api/dist/server.js"},"dependencies":{"@fastify/cors":"latest","@fastify/jwt":"latest","@fastify/sensible":"latest","@vitejs/plugin-react":"latest","bcryptjs":"latest","dotenv":"latest","fastify":"latest","lucide-react":"latest","pg":"latest","react":"latest","react-dom":"latest","serve":"latest","typescript":"latest","vite":"latest","zod":"latest"},"devDependencies":{"@types/node":"latest","@types/pg":"latest","@types/react":"latest","@types/react-dom":"latest","tsx":"latest"}}
+{
+  "name": "launchx-project-os",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "frontend:install": "cd frontend && npm install",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:start": "cd frontend && npm run start",
+    "api:install": "cd api && npm install",
+    "api:dev": "cd api && npm run dev",
+    "api:build": "cd api && npm run build",
+    "api:start": "cd api && npm run start",
+    "api:smoke": "cd api && npm run smoke",
+    "install:all": "npm run api:install && npm run frontend:install",
+    "build": "npm run api:build && npm run frontend:build",
+    "check": "npm run build && npm run api:smoke"
+  }
+}
